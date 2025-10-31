@@ -1,0 +1,36 @@
+name: Keep GitHub Actions Alive
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Refresh keepalive file
+        run: |
+          set -eu
+          timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "$timestamp" > .github/keepalive
+
+          if git diff --quiet --exit-code .github/keepalive; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git config user.name "iframely-actions-bot"
+          git config user.email "iframely-actions-bot@users.noreply.github.com"
+          git add .github/keepalive
+          git commit -m "chore: keep workflows warm [skip ci]"
+          current_branch=$(git symbolic-ref --short HEAD)
+          git push origin "HEAD:${current_branch}"

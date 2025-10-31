@@ -1,0 +1,94 @@
+name: Build and Publish Iframely
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * *"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout current repository
+        uses: actions/checkout@v5
+
+      - name: Determine latest upstream commit
+        id: latest
+        run: |
+          set -eu
+          LATEST_SHA=$(git ls-remote https://github.com/itteco/iframely HEAD | awk '{print $1}')
+          if [ -z "$LATEST_SHA" ]; then
+            echo "Unable to determine the latest upstream commit" >&2
+            exit 1
+          fi
+          SHORT_SHA=${LATEST_SHA:0:7}
+          echo "sha=$LATEST_SHA" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Check if image already published
+        id: check
+        run: |
+          set -eu
+          if docker manifest inspect laurentpellegrino/iframely:${{ steps.latest.outputs.short_sha }} > /dev/null 2>&1; then
+            echo "build_needed=false" >> "$GITHUB_OUTPUT"
+            echo "Image already exists for commit ${{ steps.latest.outputs.short_sha }}"
+          else
+            echo "build_needed=true" >> "$GITHUB_OUTPUT"
+            echo "No image found for commit ${{ steps.latest.outputs.short_sha }}"
+          fi
+
+      - name: Checkout upstream Iframely source
+        if: steps.check.outputs.build_needed == 'true'
+        uses: actions/checkout@v5
+        with:
+          repository: itteco/iframely
+          ref: ${{ steps.latest.outputs.sha }}
+          path: iframely
+
+      - name: Checkout dev Dockerfile
+        if: steps.check.outputs.build_needed == 'true'
+        uses: actions/checkout@v5
+        with:
+          repository: itteco/iframely
+          ref: dev
+          path: iframely-dev
+          sparse-checkout: |
+            Dockerfile
+          sparse-checkout-cone-mode: false
+
+      - name: Replace Dockerfile with dev variant
+        if: steps.check.outputs.build_needed == 'true'
+        run: cp iframely-dev/Dockerfile iframely/Dockerfile
+
+      - name: Set up QEMU
+        if: steps.check.outputs.build_needed == 'true'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        if: steps.check.outputs.build_needed == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: steps.check.outputs.build_needed == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push image
+        if: steps.check.outputs.build_needed == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./iframely
+          file: ./iframely/Dockerfile
+          push: true
+          tags: |
+            laurentpellegrino/iframely:${{ steps.latest.outputs.short_sha }}
+            laurentpellegrino/iframely:latest
+
+      - name: Report no-op
+        if: steps.check.outputs.build_needed == 'false'
+        run: echo "Latest upstream commit already published. Nothing to do."
