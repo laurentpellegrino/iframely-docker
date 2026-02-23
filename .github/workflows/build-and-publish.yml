@@ -19,7 +19,7 @@ jobs:
         id: latest
         run: |
           set -eu
-          LATEST_SHA=$(git ls-remote https://github.com/itteco/iframely HEAD | awk '{print $1}')
+          LATEST_SHA=$(git ls-remote https://github.com/itteco/iframely refs/heads/main | awk '{print $1}')
           if [ -z "$LATEST_SHA" ]; then
             echo "Unable to determine the latest upstream commit" >&2
             exit 1
@@ -48,20 +48,9 @@ jobs:
           ref: ${{ steps.latest.outputs.sha }}
           path: iframely
 
-      - name: Checkout dev Dockerfile
+      - name: Ensure yarn.lock exists
         if: steps.check.outputs.build_needed == 'true'
-        uses: actions/checkout@v5
-        with:
-          repository: itteco/iframely
-          ref: dev
-          path: iframely-dev
-          sparse-checkout: |
-            Dockerfile
-          sparse-checkout-cone-mode: false
-
-      - name: Replace Dockerfile with dev variant
-        if: steps.check.outputs.build_needed == 'true'
-        run: cp iframely-dev/Dockerfile iframely/Dockerfile
+        run: touch iframely/yarn.lock
 
       - name: Set up QEMU
         if: steps.check.outputs.build_needed == 'true'
