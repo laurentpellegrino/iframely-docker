@@ -19,7 +19,7 @@ jobs:
         id: latest
         run: |
           set -eu
-          LATEST_SHA=$(git ls-remote https://github.com/itteco/iframely refs/heads/main | awk '{print $1}')
+          LATEST_SHA=$(git ls-remote https://github.com/itteco/iframely HEAD | awk '{print $1}')
           if [ -z "$LATEST_SHA" ]; then
             echo "Unable to determine the latest upstream commit" >&2
             exit 1
